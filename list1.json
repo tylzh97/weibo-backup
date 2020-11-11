@@ -1,0 +1,111 @@
+import os
+import json
+import time
+import requests
+from config import conf
+
+class Weibo(object):
+    def __init__(self):
+        self.cookie = conf.get('Cookie')
+        self.header = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:61.0) Gecko/20100101 Firefox/61.0',
+            }
+        self.url_pattern = 'https://api.weibo.cn/2/profile/statuses/tab?from=10AA393010&c=iphone&s=0ddddddd&containerid=2304136826971661_-_WEIBO_SECOND_PROFILE_WEIBO&count=10&page={}'
+        # 设置Cookie
+        if self.cookie:
+            self.header['Cookie'] = self.cookie
+        # 初始化历史推文记录
+        try:
+            self.history = self.init_history()
+        except:
+            self.history = {}
+        self.new_cards = []
+        pass
+
+    # init tweets history
+    def init_history(self, retry=3, timeout=20):
+        url = conf.get('History_Tweets')
+        if not url:
+            return {}
+        # 尝试[retry]次下载内容
+        resp = None
+        for i in range(retry):
+            try:
+                resp = requests.get(
+                    url,
+                    headers=self.header,
+                    timeout=timeout
+                )
+                break
+            except expression as e:
+                print(e)
+        ret = {}
+        if resp and resp.status_code:
+            if resp.status_code != 200:
+                print('资源同步成功, 但是服务器返回了异常状态')
+            else:
+                print('资源下载成功')
+                ret = json.loads(resp.content.decode('UTF-8'))
+        else:
+            print('资源下载尝试超出最大尝试次数.')
+        return ret
+
+    # 开启微博备份, 该备份建议是小数目备份
+    def start_backup(self, timeout=20):
+        page = 1
+        new_cards = []
+        while True:
+            try:
+                resp = requests.get(
+                    self.url_pattern.format(page),
+                    headers=self.header,
+                    timeout=timeout
+                )
+                if resp.status_code != 200:
+                    print('服务器状态异常')
+                else:
+                    # 解析服务器的响应数据
+                    content = json.loads(resp.content.decode('UTF-8'))
+                    if 'cards' not in content.keys():
+                        # 如果服务器响应了异常的内容
+                        print(content.get('errmsg'))
+                        print('服务器恢复了错误响应, 可能是由于Cookie到期')
+                        return []
+                    else:
+                        # 期望的请求内容
+                        cards = [_ for _ in content.get('cards') if _.get('card_type') == 9]
+                        # ret = []
+                        history_str = json.dumps(self.history, ensure_ascii=False)
+                        for card in cards:
+                            i = card.get('mblog').get('idstr')
+                            if i not in history_str:
+                                new_cards.append(card)
+                            else:
+                                print('已经找到上次的备份头,数据卡片同步完成')
+                                return new_cards
+                    page += 1
+                    print('还没找到上次的备份头')
+            except Exception as e:
+                print(e)
+                pass
+        return []
+
+    # 同步历史数据
+    def sync_history(self):
+        pass
+
+    # 备份图片到OSS
+    def sync_image(self):
+        pass
+
+
+if __name__ == '__main__':
+    print(conf)
+    w = Weibo()
+    # data = w.init_history()
+    print('*'*100)
+    new_cards = w.start_backup()
+    print(len(new_cards))
+    # print(data)
+    print('Hello World!')
+    # 11111111111111
